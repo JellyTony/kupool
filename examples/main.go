@@ -12,7 +12,8 @@ import (
 const version = "v1"
 
 func main() {
-	flag.Parse()
+    flag.Parse()
+    _ = logger.Init(logger.Settings{Format: "json"})
 
 	root := &cobra.Command{
 		Use:     "fim",

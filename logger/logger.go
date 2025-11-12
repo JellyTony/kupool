@@ -52,8 +52,8 @@ func WithLevel(level string) Option {
 func InitDailyRolling(fileDir, fileName string, opts ...Option) error {
 	logfile := filepath.Join(fileDir, fileName)
 	options := &Options{
-		Format:        "text",
-		RotationCount: 7,
+		Format:        "json",
+		RotationCount: 3,
 		LogLevel:      "debug",
 	}
 	for _, opt := range opts {

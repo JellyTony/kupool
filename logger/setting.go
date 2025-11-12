@@ -9,27 +9,35 @@ import (
 )
 
 type Settings struct {
-	Filename    string
-	Level       string
-	RollingDays uint
-	Format      string
+    Filename    string
+    Level       string
+    RollingDays uint
+    Format      string
 }
 
 func Init(settings Settings) error {
 
-	if settings.Level == "" {
-		settings.Level = "debug"
-	}
-	ll, err := logrus.ParseLevel(settings.Level)
-	if err == nil {
-		std.SetLevel(ll)
-	} else {
-		std.Error("Invalid log level")
-	}
+    if settings.Level == "" {
+        settings.Level = "debug"
+    }
+    ll, err := logrus.ParseLevel(settings.Level)
+    if err == nil {
+        std.SetLevel(ll)
+    } else {
+        std.Error("Invalid log level")
+    }
 
-	if settings.Filename == "" {
-		return nil
-	}
+    var logfr logrus.Formatter
+    if settings.Format == "json" {
+        logfr = &logrus.JSONFormatter{DisableTimestamp: false}
+    } else {
+        logfr = &logrus.TextFormatter{DisableColors: true}
+    }
+    std.SetFormatter(logfr)
+
+    if settings.Filename == "" {
+        return nil
+    }
 
 	if settings.RollingDays == 0 {
 		settings.RollingDays = 7
@@ -53,26 +61,15 @@ func Init(settings Settings) error {
 		return err
 	}
 
-	var logfr logrus.Formatter
-	if settings.Format == "json" {
-		logfr = &logrus.JSONFormatter{
-			DisableTimestamp: false,
-		}
-	} else {
-		logfr = &logrus.TextFormatter{
-			DisableColors: true,
-		}
-	}
+    lfsHook := lfshook.NewHook(lfshook.WriterMap{
+        logrus.DebugLevel: writer,
+        logrus.InfoLevel:  writer,
+        logrus.WarnLevel:  writer,
+        logrus.ErrorLevel: writer,
+        // logrus.FatalLevel: writer,
+        // logrus.PanicLevel: writer,
+    }, logfr)
 
-	lfsHook := lfshook.NewHook(lfshook.WriterMap{
-		logrus.DebugLevel: writer,
-		logrus.InfoLevel:  writer,
-		logrus.WarnLevel:  writer,
-		logrus.ErrorLevel: writer,
-		// logrus.FatalLevel: writer,
-		// logrus.PanicLevel: writer,
-	}, logfr)
-
-	std.AddHook(lfsHook)
-	return nil
+    std.AddHook(lfsHook)
+    return nil
 }
