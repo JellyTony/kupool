@@ -45,7 +45,7 @@ func main() {
 	if v := os.Getenv("KUP_MQ_QUEUE"); v != "" {
 		*mqQueue = v
 	}
-	if err := logger.Init(logger.Settings{Format: "json", Level: os.Getenv("KUP_LOG_LEVEL"), Caller: true}); err != nil {
+	if err := logger.Init(logger.Settings{Format: "json", Level: os.Getenv("KUP_LOG_LEVEL")}); err != nil {
 		logger.WithError(err).Fatal("logger init failed")
 	}
 	var store server.StatsStore
