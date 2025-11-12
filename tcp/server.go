@@ -79,6 +79,7 @@ func (s *Server) Start() error {
 			id, err := s.Accept(conn, s.options.loginwait)
 			if err != nil {
 				_ = conn.WriteFrame(kupool.OpClose, []byte(err.Error()))
+				log.Debugf("close connection, %s", id)
 				conn.Close()
 				return
 			}
@@ -95,10 +96,10 @@ func (s *Server) Start() error {
 
 			s.Add(channel)
 
-			log.Info("accept ", channel)
+			log.Infof("accept channel: %s", channel.ID())
 			err = channel.Readloop(s.MessageListener)
 			if err != nil {
-				log.Info(err)
+				log.Errorf("read channel error: %s", err.Error())
 			}
 			s.Remove(channel.ID())
 			_ = s.Disconnect(channel.ID())
