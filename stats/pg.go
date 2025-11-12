@@ -34,9 +34,9 @@ CREATE TABLE IF NOT EXISTS submissions (
 
 func (s *PGStore) Increment(username string, minute time.Time) error {
 	m := minute.Truncate(time.Minute)
-	_, err := s.db.Exec(`
+    _, err := s.db.Exec(`
 INSERT INTO submissions(username, timestamp, submission_count)
-VALUES($1, date_trunc('minute', $2), 1)
+VALUES($1, date_trunc('minute', $2::timestamp), 1)
 ON CONFLICT (username, timestamp)
 DO UPDATE SET submission_count = submissions.submission_count + 1;
 `, username, m)
@@ -46,7 +46,7 @@ DO UPDATE SET submission_count = submissions.submission_count + 1;
 func (s *PGStore) Get(username string, minute time.Time) (int, error) {
 	m := minute.Truncate(time.Minute)
 	var cnt int
-	err := s.db.QueryRow(`SELECT submission_count FROM submissions WHERE username=$1 AND timestamp=date_trunc('minute', $2)`, username, m).Scan(&cnt)
+    err := s.db.QueryRow(`SELECT submission_count FROM submissions WHERE username=$1 AND timestamp=date_trunc('minute', $2::timestamp)`, username, m).Scan(&cnt)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}

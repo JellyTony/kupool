@@ -35,6 +35,7 @@ type ServerPusher interface {
 
 type StatsStore interface {
     Increment(username string, minute time.Time) error
+    Get(username string, minute time.Time) (int, error)
 }
 
 type MessageQueue interface {

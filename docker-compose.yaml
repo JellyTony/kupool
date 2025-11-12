@@ -6,6 +6,11 @@ services:
       - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   postgres:
     image: postgres:16
@@ -17,6 +22,48 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kupool -d kupool"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kupool-server:
+    build:
+      context: .
+      args:
+        APP: server
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      KUP_ADDR: ":8080"
+      KUP_INTERVAL: "30s"
+      KUP_MQ: "rabbit"
+      KUP_MQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      KUP_MQ_QUEUE: "kupool_submissions"
+      KUP_STORE: "pg"
+      KUP_PG_DSN: "postgres://kupool:kupool@postgres:5432/kupool?sslmode=disable"
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    restart: unless-stopped
+
+  kupool-client:
+    build:
+      context: .
+      args:
+        APP: client
+    depends_on:
+      kupool-server:
+        condition: service_started
+    environment:
+      KUP_ADDR: "kupool-server:8080"
+      KUP_USERNAME: "admin"
+    command: ["-addr", "kupool-server:8080", "-username", "admin"]
+    restart: unless-stopped
 
 volumes:
   rabbitmq_data:

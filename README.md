@@ -79,22 +79,30 @@ KuPool 基于 TCP 的消息处理系统
   - 运行测试：`make test` 或带覆盖率 `make test-coverage`
   - 其他：`make fmt`、`make lint`、`make help`
 
-使用 Docker 启动依赖
-- 项目根目录提供 `docker-compose.yaml`，包含 RabbitMQ 与 PostgreSQL。
+Docker 部署
+- 组成：RabbitMQ、Postgres、kupool-server、kupool-client（均在 `docker-compose.yaml`）。
+- 构建：
+  - `export DOCKER_BUILDKIT=1`
+  - `export COMPOSE_DOCKER_CLI_BUILD=1`
+  - `docker compose build --build-arg GOPROXY=https://goproxy.cn,direct`
 - 启动：`docker compose up -d`
   - RabbitMQ 管理端：`http://localhost:15672`（guest/guest）
   - RabbitMQ AMQP：`amqp://guest:guest@localhost:5672/`
-  - PostgreSQL：`postgres://kupool:kupool@localhost:5432/kupool?sslmode=disable`
+  - Postgres：`postgres://kupool:kupool@localhost:5432/kupool?sslmode=disable`
+  - 服务端端口：`http://localhost:8080`
+- 运行机制：
+  - `kupool-server` 使用 `APP=server` 构建并读取 MQ/PG 环境变量，健康检查依赖 RabbitMQ 与 Postgres。
+  - `kupool-client` 使用 `APP=client` 构建并通过命令行参数连接 `kupool-server:8080`。
 - 停止：`docker compose down`
 - 清理数据卷：`docker compose down -v`
-- 使用 Docker 依赖运行服务端：
-  - 设置环境：
-    - `export KUP_MQ=rabbit`
-    - `export KUP_MQ_URL=amqp://guest:guest@localhost:5672/`
-    - `export KUP_MQ_QUEUE=kupool_submissions`
-    - `export KUP_STORE=pg`
-    - `export KUP_PG_DSN=postgres://kupool:kupool@localhost:5432/kupool?sslmode=disable`
-  - 启动：`go run cmd/kupool-server/main.go -addr :8080 -interval 30s -expire 0`
+
+管理与可视化
+- 健康检查：`GET http://localhost:8081/health` 返回 200。
+- 统计查询：`GET http://localhost:8081/stats?username=admin&minute=2025-11-12T15:26:00+08:00`
+  - 参数：
+    - `username` 必填
+    - `minute` 可选（RFC3339），默认当前时间；查询精确到分钟聚合
+  - 返回：`{"username":"admin","minute":"2025-11-12T15:26:00+08:00","submission_count":3}`
 
 配置说明
 - 环境变量（服务端）：
@@ -133,6 +141,10 @@ KuPool 基于 TCP 的消息处理系统
 - 无法连接服务端：检查 `-addr` 与防火墙；确认服务端日志输出。
 - 无 RabbitMQ/PG：使用内存队列与内存统计运行（设置 `KUP_MQ=memory`, `KUP_STORE=memory`）。
 - 结果错误：使用在线工具校验 `SHA256(server_nonce + client_nonce)`。
+- Docker 构建失败：
+  - `go mod download` 失败 → 使用自定义代理：`docker compose build --build-arg GOPROXY=https://goproxy.cn,direct`
+  - 提示 BuildKit 未启用 → 先执行：`export DOCKER_BUILDKIT=1` 与 `export COMPOSE_DOCKER_CLI_BUILD=1`
+  - 日志驱动不支持读取 → 使用 `docker compose logs -f kupool-server` 查看实时日志，或切换到支持读取的驱动。
 
 附注
 - 本项目遵循面试题规范：可运行、可测试、可扩展；核心场景优先保证正确性与可读性。
