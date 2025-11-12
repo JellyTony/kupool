@@ -107,10 +107,10 @@ func (ch *ChannelImpl) SetWriteWait(writeWait time.Duration) {
 }
 
 func (ch *ChannelImpl) SetReadWait(readwait time.Duration) {
-    if readwait == 0 {
-        return
-    }
-    ch.readwait = readwait
+	if readwait == 0 {
+		return
+	}
+	ch.readwait = readwait
 }
 
 func (ch *ChannelImpl) Readloop(lst MessageListener) error {
@@ -132,7 +132,7 @@ func (ch *ChannelImpl) Readloop(lst MessageListener) error {
 			return errors.New("remote side close the channel")
 		}
 		if frame.GetOpCode() == OpPing {
-			log.Trace("recv a ping; resp with a pong")
+			log.Debug("recv a ping; resp with a pong")
 			_ = ch.WriteFrame(OpPong, nil)
 			continue
 		}

@@ -64,16 +64,37 @@ KuPool 基于 TCP 的消息处理系统
 - 内存队列用于本地开发：`mq/memory.go`。
 
 构建与运行
-- 依赖：`Go 1.20+`、可选 `Docker`。
-- 构建：
+- 依赖：`Go 1.20+`、可选 `Docker 24+`、`docker compose`。
+- 方式一：Go 直接构建
   - `go build ./...`
-- 启动依赖（可选）：
-  - `docker compose up -d`（使用项目根的 `docker-compose.yaml` 启动 RabbitMQ 与 Postgres）。
-- 启动服务端：
-  - `KUP_LOG_LEVEL=info KUP_MQ=rabbit KUP_MQ_URL=amqp://guest:guest@localhost:5672/ KUP_MQ_QUEUE=kupool_submissions KUP_STORE=pg KUP_PG_DSN=postgres://kupool:kupool@localhost:5432/kupool?sslmode=disable go run cmd/kupool-server/main.go -addr :8080 -interval 30s -expire 0`
-  - 说明：将 `KUP_STORE=memory` 可改为内存统计；`-expire` 支持任务过期校验，`0` 为禁用。
-- 启动客户端：
-  - `go run cmd/kupool-client/main.go -addr localhost:8080 -username admin`
+  - 启动服务端：
+    - `KUP_LOG_LEVEL=info KUP_MQ=rabbit KUP_MQ_URL=amqp://guest:guest@localhost:5672/ KUP_MQ_QUEUE=kupool_submissions KUP_STORE=pg KUP_PG_DSN=postgres://kupool:kupool@localhost:5432/kupool?sslmode=disable go run cmd/kupool-server/main.go -addr :8080 -interval 30s -expire 0`
+    - 说明：`KUP_STORE=memory` 可改为内存统计；`-expire` 为任务过期，`0` 表示禁用。
+  - 启动客户端：`go run cmd/kupool-client/main.go -addr localhost:8080 -username admin`
+- 方式二：使用 Makefile
+  - 安装依赖：`make deps`
+  - 当前平台构建产物：`make build-local`（生成到 `bin/`）
+  - 全平台构建（多架构交叉编译）：`make build`
+  - 清理：`make clean`
+  - 运行测试：`make test` 或带覆盖率 `make test-coverage`
+  - 其他：`make fmt`、`make lint`、`make help`
+
+使用 Docker 启动依赖
+- 项目根目录提供 `docker-compose.yaml`，包含 RabbitMQ 与 PostgreSQL。
+- 启动：`docker compose up -d`
+  - RabbitMQ 管理端：`http://localhost:15672`（guest/guest）
+  - RabbitMQ AMQP：`amqp://guest:guest@localhost:5672/`
+  - PostgreSQL：`postgres://kupool:kupool@localhost:5432/kupool?sslmode=disable`
+- 停止：`docker compose down`
+- 清理数据卷：`docker compose down -v`
+- 使用 Docker 依赖运行服务端：
+  - 设置环境：
+    - `export KUP_MQ=rabbit`
+    - `export KUP_MQ_URL=amqp://guest:guest@localhost:5672/`
+    - `export KUP_MQ_QUEUE=kupool_submissions`
+    - `export KUP_STORE=pg`
+    - `export KUP_PG_DSN=postgres://kupool:kupool@localhost:5432/kupool?sslmode=disable`
+  - 启动：`go run cmd/kupool-server/main.go -addr :8080 -interval 30s -expire 0`
 
 配置说明
 - 环境变量（服务端）：
