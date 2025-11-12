@@ -1,16 +1,23 @@
 package stats
 
 import (
-	"database/sql"
 	"time"
 
-	_ "github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-type PGStore struct{ db *sql.DB }
+type Submission struct {
+	Username        string    `gorm:"primaryKey;size:255"`
+	Timestamp       time.Time `gorm:"primaryKey;type:timestamp"`
+	SubmissionCount int       `gorm:"not null"`
+}
+
+type PGStore struct{ db *gorm.DB }
 
 func NewPGStore(dsn string) (*PGStore, error) {
-	db, err := sql.Open("postgres", dsn)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
@@ -21,34 +28,23 @@ func NewPGStore(dsn string) (*PGStore, error) {
 	return s, nil
 }
 
-func (s *PGStore) ensureSchema() error {
-	_, err := s.db.Exec(`
-CREATE TABLE IF NOT EXISTS submissions (
-  username VARCHAR(255),
-  timestamp TIMESTAMP,
-  submission_count INT,
-  PRIMARY KEY (username, timestamp)
-);`)
-	return err
-}
+func (s *PGStore) ensureSchema() error { return s.db.AutoMigrate(&Submission{}) }
 
 func (s *PGStore) Increment(username string, minute time.Time) error {
 	m := minute.Truncate(time.Minute)
-    _, err := s.db.Exec(`
-INSERT INTO submissions(username, timestamp, submission_count)
-VALUES($1, date_trunc('minute', $2::timestamp), 1)
-ON CONFLICT (username, timestamp)
-DO UPDATE SET submission_count = submissions.submission_count + 1;
-`, username, m)
-	return err
+	rec := Submission{Username: username, Timestamp: m, SubmissionCount: 1}
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "username"}, {Name: "timestamp"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{"submission_count": gorm.Expr("submissions.submission_count + EXCLUDED.submission_count")}),
+	}).Create(&rec).Error
 }
 
 func (s *PGStore) Get(username string, minute time.Time) (int, error) {
 	m := minute.Truncate(time.Minute)
-	var cnt int
-    err := s.db.QueryRow(`SELECT submission_count FROM submissions WHERE username=$1 AND timestamp=date_trunc('minute', $2::timestamp)`, username, m).Scan(&cnt)
-	if err == sql.ErrNoRows {
+	var rec Submission
+	err := s.db.Where("username = ? AND timestamp = date_trunc('minute', ?::timestamp)", username, m).First(&rec).Error
+	if err == gorm.ErrRecordNotFound {
 		return 0, nil
 	}
-	return cnt, err
+	return rec.SubmissionCount, err
 }
