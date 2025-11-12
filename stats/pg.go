@@ -36,8 +36,6 @@ func (s *PGStore) ensureSchema() error {
 func (s *PGStore) Increment(username string, minute time.Time) error {
 	m := minute.Truncate(time.Minute)
 
-	// 使用upsert来增加提交计数
-	// 修复列引用歧义问题，在gorm.Expr中明确指定表名
 	sql := s.db.ToSQL(func(tx *gorm.DB) *gorm.DB {
 		return tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "username"}, {Name: "timestamp"}},
