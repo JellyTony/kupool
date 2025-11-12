@@ -64,10 +64,10 @@ func (l *Listener) handleSubmit(channelID string, p protocol.SubmitParams) error
         }
     }
 	now := time.Now()
-	if !s.LastSubmitAt.IsZero() && now.Sub(s.LastSubmitAt) < time.Second {
-		return errors.New("Submission too frequent")
-	}
-	m, ok := s.UsedNonces[p.JobID]
+    if !s.LastSubmitAt.IsZero() && now.Sub(s.LastSubmitAt) < time.Second {
+        return errors.New("Submission too frequent")
+    }
+    m, ok := s.UsedNonces[p.JobID]
 	if !ok {
 		m = make(map[string]struct{})
 		s.UsedNonces[p.JobID] = m
@@ -80,8 +80,12 @@ func (l *Listener) handleSubmit(channelID string, p protocol.SubmitParams) error
 	if !strings.EqualFold(hexed, p.Result) {
 		return errors.New("Invalid result")
 	}
-	m[p.ClientNonce] = struct{}{}
-	s.LastSubmitAt = now
+    m[p.ClientNonce] = struct{}{}
+    s.LastSubmitAt = now
+    if l.coord.state != nil {
+        _ = l.coord.state.SaveUsedNonce(s.Username, p.JobID, p.ClientNonce)
+        _ = l.coord.state.SaveUserState(s.Username, s.LatestJobID, s.LatestServerNonce, s.LastSubmitAt)
+    }
     _ = l.coord.mq.Publish(events.SubmitEvent{Username: s.Username, Time: now})
     logger.WithFields(logger.Fields{"module":"app.listener","username":s.Username,"job_id":p.JobID,"client_nonce":p.ClientNonce}).Info("submit accepted")
     return nil

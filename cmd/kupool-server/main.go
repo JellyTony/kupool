@@ -1,18 +1,19 @@
 package main
 
 import (
-	"encoding/json"
-	"flag"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
+    "context"
+    "encoding/json"
+    "flag"
+    "net/http"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
 
-	"github.com/JellyTony/kupool/app/server"
-	"github.com/JellyTony/kupool/logger"
-	"github.com/JellyTony/kupool/mq"
-	"github.com/JellyTony/kupool/stats"
+    "github.com/JellyTony/kupool/app/server"
+    "github.com/JellyTony/kupool/logger"
+    "github.com/JellyTony/kupool/mq"
+    "github.com/JellyTony/kupool/stats"
 )
 
 func main() {
@@ -76,12 +77,24 @@ func main() {
 	} else {
 		queue = mq.NewMemoryQueue(1024)
 	}
-	app := server.NewAppServer(*addr, store, queue, *interval, *expire)
-	go func() { _ = app.Start() }()
+    historyWindow := 24 * time.Hour
+    if v := os.Getenv("KUP_HISTORY_WINDOW"); v != "" {
+        if d, err := time.ParseDuration(v); err == nil { historyWindow = d }
+    }
+    // state store 与 stats store共享（PG 模式）；内存模式用同一个 MemoryStore 实现两者接口
+    var state server.StateStore
+    if *storeKind == "pg" {
+        state = store.(server.StateStore)
+    } else {
+        state = store.(server.StateStore)
+    }
+    app := server.NewAppServer(*addr, store, state, queue, *interval, *expire, historyWindow)
+    rootCtx, rootCancel := context.WithCancel(context.Background())
+    go func() { _ = app.Start(rootCtx) }()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
-	mux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+    mux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL.Query().Get("username")
 		ms := r.URL.Query().Get("minute")
 		m := time.Now()
@@ -97,11 +110,23 @@ func main() {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"username": u, "minute": m.Truncate(time.Minute).Format(time.RFC3339), "submission_count": cnt})
-	})
+    })
+    mux.HandleFunc("/shutdown/status", func(w http.ResponseWriter, r *http.Request){
+        st := app.Status()
+        _ = json.NewEncoder(w).Encode(map[string]any{
+            "start_at": st.StartAt.Format(time.RFC3339),
+            "end_at": st.EndAt.Format(time.RFC3339),
+            "mq_stopped": st.MQStopped,
+            "store_closed": st.StoreClosed,
+            "server_closed": st.ServerClosed,
+            "duration": st.Duration.String(),
+        })
+    })
 	go func() { _ = http.ListenAndServe(":8081", mux) }()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
-	_ = app.Shutdown()
+    <-sigCh
+    rootCancel()
+    _ = app.Shutdown(rootCtx)
 }

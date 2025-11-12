@@ -52,6 +52,19 @@ func (a *Acceptor) Accept(conn kupool.Conn, timeout time.Duration) (string, erro
     }
     chID := hex.EncodeToString(buf)
     a.coord.RegisterSession(chID, p.Username)
+    if a.coord.state != nil {
+        a.coord.mu.Lock()
+        // restore user state into session
+        latestJobID, latestNonce, lastSubmit, err := a.coord.state.LoadUserState(p.Username)
+        s := a.coord.sessions[chID]
+        if err == nil {
+            s.LatestJobID = latestJobID
+            s.LatestServerNonce = latestNonce
+            s.LastSubmitAt = lastSubmit
+        }
+        // used nonces restoration can be lazy; keep empty to avoid heavy load
+        a.coord.mu.Unlock()
+    }
     logger.WithFields(logger.Fields{"module":"app.acceptor","username":p.Username,"channel_id":chID}).Info("authorized")
     resp := protocol.Response{ID: *req.ID, Result: true}
     data, _ := protocol.Encode(resp)

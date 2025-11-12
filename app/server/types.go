@@ -21,8 +21,10 @@ type Coordinator struct {
     jobID        int
     serverNonce  string
     nonceInterval time.Duration
+    historyWindow time.Duration
     srv          ServerPusher
     store        StatsStore
+    state        StateStore
     mq           MessageQueue
     history      map[int]JobRecord
     expireAfter  time.Duration
@@ -36,6 +38,18 @@ type ServerPusher interface {
 type StatsStore interface {
     Increment(username string, minute time.Time) error
     Get(username string, minute time.Time) (int, error)
+    Close() error
+}
+
+type StateStore interface {
+    SaveJob(jobID int, nonce string, createdAt time.Time) error
+    LoadLatestJob() (jobID int, nonce string, createdAt time.Time, err error)
+    LoadJobHistory(since time.Duration) (map[int]JobRecord, error)
+    LoadUserState(username string) (latestJobID int, latestServerNonce string, lastSubmitAt time.Time, err error)
+    SaveUserState(username string, latestJobID int, latestServerNonce string, lastSubmitAt time.Time) error
+    SaveUsedNonce(username string, jobID int, clientNonce string) error
+    HasUsedNonce(username string, jobID int, clientNonce string) (bool, error)
+    Close() error
 }
 
 type MessageQueue interface {
