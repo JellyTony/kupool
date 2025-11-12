@@ -15,7 +15,8 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen addr")
-	interval := flag.Duration("interval", 30*time.Second, "nonce update interval")
+    interval := flag.Duration("interval", 30*time.Second, "nonce update interval")
+    expire := flag.Duration("expire", 0, "task expire duration (0=disabled)")
 	storeKind := flag.String("store", "memory", "store backend: memory|pg")
 	pgDsn := flag.String("pg_dsn", "", "postgres dsn")
 	mqKind := flag.String("mq", "memory", "mq backend: memory|rabbit")
@@ -25,11 +26,14 @@ func main() {
 	if v := os.Getenv("KUP_ADDR"); v != "" {
 		*addr = v
 	}
-	if v := os.Getenv("KUP_INTERVAL"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			*interval = d
-		}
-	}
+    if v := os.Getenv("KUP_INTERVAL"); v != "" {
+        if d, err := time.ParseDuration(v); err == nil {
+            *interval = d
+        }
+    }
+    if v := os.Getenv("KUP_EXPIRE"); v != "" {
+        if d, err := time.ParseDuration(v); err == nil { *expire = d }
+    }
 	if v := os.Getenv("KUP_STORE"); v != "" {
 		*storeKind = v
 	}
@@ -68,7 +72,7 @@ func main() {
 	} else {
 		queue = mq.NewMemoryQueue(1024)
 	}
-	app := server.NewAppServer(*addr, store, queue, *interval)
+    app := server.NewAppServer(*addr, store, queue, *interval, *expire)
 	go func() { _ = app.Start() }()
 
 	sigCh := make(chan os.Signal, 1)

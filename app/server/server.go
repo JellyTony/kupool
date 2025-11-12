@@ -10,20 +10,20 @@ import (
 )
 
 type AppServer struct {
-	srv   kupool.Server
-	coord *Coordinator
+    srv   kupool.Server
+    coord *Coordinator
 }
 
-func NewAppServer(addr string, store StatsStore, mq MessageQueue, interval time.Duration) *AppServer {
-	s := tcp.NewServer(addr)
-	coord := NewCoordinator(s, store, mq, interval, 0)
-	acc := NewAcceptor(coord)
-	lst := NewListener(coord)
-	st := NewState(coord)
-	s.SetAcceptor(acc)
-	s.SetMessageListener(lst)
-	s.SetStateListener(st)
-	return &AppServer{srv: s, coord: coord}
+func NewAppServer(addr string, store StatsStore, mq MessageQueue, interval time.Duration, expire time.Duration) *AppServer {
+    s := tcp.NewServer(addr)
+    coord := NewCoordinator(s, store, mq, interval, expire)
+    acc := NewAcceptor(coord)
+    lst := NewListener(coord)
+    st := NewState(coord)
+    s.SetAcceptor(acc)
+    s.SetMessageListener(lst)
+    s.SetStateListener(st)
+    return &AppServer{srv: s, coord: coord}
 }
 
 func (a *AppServer) Start() error {
