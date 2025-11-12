@@ -35,7 +35,7 @@ func (l *Listener) Receive(ag kupool.Agent, payload []byte) {
         l.respondError(ag, *req.ID, "Invalid result")
         return
     }
-    chID := ag.(kupool.Channel).ID()
+    chID := ag.ID()
     logger.WithFields(logger.Fields{"module":"app.listener","channel_id":chID,"job_id":p.JobID}).Debug("submit received")
     if err := l.handleSubmit(chID, p); err != nil {
         l.respondError(ag, *req.ID, err.Error())

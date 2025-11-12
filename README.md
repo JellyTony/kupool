@@ -114,6 +114,7 @@ Docker 部署
   - `KUP_MQ`：`memory` 或 `rabbit`
   - `KUP_MQ_URL`：RabbitMQ URL（如 `amqp://guest:guest@localhost:5672/`）
   - `KUP_MQ_QUEUE`：队列名（如 `kupool_submissions`）
+  - `KUP_HISTORY_WINDOW`：历史任务恢复窗口（如 `24h`；`0` 表示仅恢复最新任务）
 
 测试指南
 - 并发客户端：启动多个客户端进程，观察服务端并发授权与广播日志。
@@ -124,6 +125,7 @@ Docker 部署
   - 重复 `client_nonce` → 返回 `Duplicate submission`；
   - 非最新 `job_id`：若存在历史且未过期，按历史校验；否则 `Task does not exist`；
   - 过期任务（开启 `KUP_EXPIRE`）→ 返回 `Task expired`。
+  - 授权请求 `id` 为空（`null`）→ 返回 `unauthorized`（避免非法请求导致服务端崩溃）。
 - 统计验证：在 Postgres 中查询某用户在某分钟的 `submission_count`。
 
 项目结构

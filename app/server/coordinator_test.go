@@ -10,7 +10,7 @@ func (p *memPusher) Push(id string, data []byte) error { p.count++; p.last = dat
 
 func TestCoordinatorBroadcast(t *testing.T) {
     p := &memPusher{}
-    coord := NewCoordinator(p, &fakeStore{}, &fakeMQ{}, time.Millisecond*100, 0)
+    coord := NewCoordinator(p, &fakeStore{}, nil, &fakeMQ{}, time.Millisecond*100, 0, time.Hour)
     coord.RegisterSession("c1", "u1")
     coord.RegisterSession("c2", "u2")
     coord.rotateJob()
@@ -19,4 +19,3 @@ func TestCoordinatorBroadcast(t *testing.T) {
     s1 := coord.sessions["c1"]
     if s1.LatestJobID == 0 || s1.LatestServerNonce == "" { t.Fatal("session updated") }
 }
-

@@ -34,7 +34,7 @@ func (a *Acceptor) Accept(conn kupool.Conn, timeout time.Duration) (string, erro
     if err := protocol.Decode(frame.GetPayload(), &req); err != nil {
         return "", err
     }
-    if req.Method != "authorize" || req.Params == nil {
+    if req.Method != "authorize" || req.Params == nil || req.ID == nil {
         logger.WithFields(logger.Fields{"module":"app.acceptor","method":req.Method}).Warn("unauthorized: invalid method")
         return "", errors.New("unauthorized")
     }

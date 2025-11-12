@@ -1,6 +1,7 @@
 package server
 
 import (
+    "context"
     "crypto/sha256"
     "encoding/hex"
     "net"
@@ -10,9 +11,46 @@ import (
     kupool "github.com/JellyTony/kupool"
     "github.com/JellyTony/kupool/mq"
     "github.com/JellyTony/kupool/protocol"
-    "github.com/JellyTony/kupool/stats"
     "github.com/JellyTony/kupool/tcp"
 )
+
+type memStore struct{
+    data map[string]map[time.Time]int
+    latestID int
+    latestNonce string
+    hist map[int]JobRecord
+}
+
+func newMemStore() *memStore { return &memStore{data: make(map[string]map[time.Time]int), hist: make(map[int]JobRecord)} }
+
+// StatsStore
+func (m *memStore) Increment(username string, minute time.Time) error {
+    mm := minute.Truncate(time.Minute)
+    u := m.data[username]
+    if u == nil { u = make(map[time.Time]int); m.data[username] = u }
+    u[mm] = u[mm] + 1
+    return nil
+}
+func (m *memStore) Get(username string, minute time.Time) (int, error) {
+    mm := minute.Truncate(time.Minute)
+    u := m.data[username]
+    if u == nil { return 0, nil }
+    return u[mm], nil
+}
+func (m *memStore) Close() error { return nil }
+
+// StateStore
+func (m *memStore) SaveJob(jobID int, nonce string, createdAt time.Time) error {
+    m.latestID = jobID; m.latestNonce = nonce; m.hist[jobID] = JobRecord{Nonce: nonce, CreatedAt: createdAt}; return nil
+}
+func (m *memStore) LoadLatestJob() (int, string, time.Time, error) {
+    rec := m.hist[m.latestID]; return m.latestID, rec.Nonce, rec.CreatedAt, nil
+}
+func (m *memStore) LoadJobHistory(since time.Duration) (map[int]JobRecord, error) { return m.hist, nil }
+func (m *memStore) LoadUserState(username string) (int, string, time.Time, error) { return 0, "", time.Time{}, nil }
+func (m *memStore) SaveUserState(username string, latestJobID int, latestServerNonce string, lastSubmitAt time.Time) error { return nil }
+func (m *memStore) SaveUsedNonce(username string, jobID int, clientNonce string) error { return nil }
+func (m *memStore) HasUsedNonce(username string, jobID int, clientNonce string) (bool, error) { return false, nil }
 
 func dialAuthorize(t *testing.T, addr, username string) net.Conn {
     conn, err := net.DialTimeout("tcp", addr, time.Second*3)
@@ -57,11 +95,13 @@ func sendSubmit(t *testing.T, conn net.Conn, id int, p protocol.SubmitParams) pr
 }
 
 func TestSuccessFlow(t *testing.T) {
-    store := stats.NewMemoryStore()
+    store := newMemStore()
     queue := mq.NewMemoryQueue(16)
-    app := NewAppServer("127.0.0.1:9091", store, queue, time.Millisecond*200)
-    go func(){ _ = app.Start() }()
-    t.Cleanup(func(){ _ = app.Shutdown() })
+    state := StateStore(store)
+    app := NewAppServer("127.0.0.1:9091", store, state, queue, time.Millisecond*200, 0, time.Hour)
+    rootCtx, cancel := context.WithCancel(context.Background())
+    go func(){ _ = app.Start(rootCtx) }()
+    t.Cleanup(func(){ cancel(); _ = app.Shutdown(rootCtx) })
     time.Sleep(time.Millisecond*100)
     conn := dialAuthorize(t, "127.0.0.1:9091", "u1")
     job := readJob(t, conn)
@@ -71,11 +111,13 @@ func TestSuccessFlow(t *testing.T) {
 }
 
 func TestInvalidResult(t *testing.T) {
-    store := stats.NewMemoryStore()
+    store := newMemStore()
     queue := mq.NewMemoryQueue(16)
-    app := NewAppServer("127.0.0.1:9092", store, queue, time.Millisecond*200)
-    go func(){ _ = app.Start() }()
-    t.Cleanup(func(){ _ = app.Shutdown() })
+    state := StateStore(store)
+    app := NewAppServer("127.0.0.1:9092", store, state, queue, time.Millisecond*200, 0, time.Hour)
+    rootCtx, cancel := context.WithCancel(context.Background())
+    go func(){ _ = app.Start(rootCtx) }()
+    t.Cleanup(func(){ cancel(); _ = app.Shutdown(rootCtx) })
     time.Sleep(time.Millisecond*100)
     conn := dialAuthorize(t, "127.0.0.1:9092", "u2")
     job := readJob(t, conn)
@@ -84,11 +126,13 @@ func TestInvalidResult(t *testing.T) {
 }
 
 func TestRateLimit(t *testing.T) {
-    store := stats.NewMemoryStore()
+    store := newMemStore()
     queue := mq.NewMemoryQueue(16)
-    app := NewAppServer("127.0.0.1:9093", store, queue, time.Millisecond*200)
-    go func(){ _ = app.Start() }()
-    t.Cleanup(func(){ _ = app.Shutdown() })
+    state := StateStore(store)
+    app := NewAppServer("127.0.0.1:9093", store, state, queue, time.Millisecond*200, 0, time.Hour)
+    rootCtx, cancel := context.WithCancel(context.Background())
+    go func(){ _ = app.Start(rootCtx) }()
+    t.Cleanup(func(){ cancel(); _ = app.Shutdown(rootCtx) })
     time.Sleep(time.Millisecond*100)
     conn := dialAuthorize(t, "127.0.0.1:9093", "u3")
     job := readJob(t, conn)
@@ -100,11 +144,13 @@ func TestRateLimit(t *testing.T) {
 }
 
 func TestDuplicate(t *testing.T) {
-    store := stats.NewMemoryStore()
+    store := newMemStore()
     queue := mq.NewMemoryQueue(16)
-    app := NewAppServer("127.0.0.1:9094", store, queue, time.Millisecond*200)
-    go func(){ _ = app.Start() }()
-    t.Cleanup(func(){ _ = app.Shutdown() })
+    state := StateStore(store)
+    app := NewAppServer("127.0.0.1:9094", store, state, queue, time.Millisecond*200, 0, time.Hour)
+    rootCtx, cancel := context.WithCancel(context.Background())
+    go func(){ _ = app.Start(rootCtx) }()
+    t.Cleanup(func(){ cancel(); _ = app.Shutdown(rootCtx) })
     time.Sleep(time.Millisecond*100)
     conn := dialAuthorize(t, "127.0.0.1:9094", "u4")
     job := readJob(t, conn)
@@ -115,11 +161,13 @@ func TestDuplicate(t *testing.T) {
 }
 
 func TestTaskNotExist(t *testing.T) {
-    store := stats.NewMemoryStore()
+    store := newMemStore()
     queue := mq.NewMemoryQueue(16)
-    app := NewAppServer("127.0.0.1:9095", store, queue, time.Millisecond*200)
-    go func(){ _ = app.Start() }()
-    t.Cleanup(func(){ _ = app.Shutdown() })
+    state := StateStore(store)
+    app := NewAppServer("127.0.0.1:9095", store, state, queue, time.Millisecond*200, 0, time.Hour)
+    rootCtx, cancel := context.WithCancel(context.Background())
+    go func(){ _ = app.Start(rootCtx) }()
+    t.Cleanup(func(){ cancel(); _ = app.Shutdown(rootCtx) })
     time.Sleep(time.Millisecond*100)
     conn := dialAuthorize(t, "127.0.0.1:9095", "u5")
     job := readJob(t, conn)
@@ -134,11 +182,13 @@ func clientResult(serverNonce, clientNonce string) string {
 }
 
 func TestConcurrentClients(t *testing.T) {
-    store := stats.NewMemoryStore()
+    store := newMemStore()
     queue := mq.NewMemoryQueue(64)
-    app := NewAppServer("127.0.0.1:9096", store, queue, time.Millisecond*200)
-    go func(){ _ = app.Start() }()
-    t.Cleanup(func(){ _ = app.Shutdown() })
+    state := StateStore(store)
+    app := NewAppServer("127.0.0.1:9096", store, state, queue, time.Millisecond*200, 0, time.Hour)
+    rootCtx, cancel := context.WithCancel(context.Background())
+    go func(){ _ = app.Start(rootCtx) }()
+    t.Cleanup(func(){ cancel(); _ = app.Shutdown(rootCtx) })
     time.Sleep(time.Millisecond*100)
     n := 5
     done := make(chan struct{}, n)

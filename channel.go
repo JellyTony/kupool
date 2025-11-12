@@ -122,6 +122,7 @@ func (ch *ChannelImpl) Readloop(lst MessageListener) error {
 		"id":     ch.id,
 	})
 	for {
+		// TODO: 这里设置读超时，防止连接被keep-alive的情况下，长时间没有数据交互，作用是及时发现连接异常
 		_ = ch.SetReadDeadline(time.Now().Add(ch.readwait))
 
 		frame, err := ch.ReadFrame()

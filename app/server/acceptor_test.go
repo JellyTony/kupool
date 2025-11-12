@@ -13,6 +13,8 @@ import (
 
 type fakeStore struct{}
 func (f *fakeStore) Increment(string, time.Time) error { return nil }
+func (f *fakeStore) Get(string, time.Time) (int, error) { return 0, nil }
+func (f *fakeStore) Close() error { return nil }
 type fakeMQ struct{}
 func (f *fakeMQ) Publish(evt events.SubmitEvent) error { return nil }
 func (f *fakeMQ) Subscribe() <-chan events.SubmitEvent { ch := make(chan events.SubmitEvent); close(ch); return ch }
@@ -24,7 +26,7 @@ func (p *fakePusher) Push(id string, data []byte) error { p.last = data; return 
 func TestAcceptorAuthorize(t *testing.T) {
     s, c := net.Pipe()
     defer s.Close(); defer c.Close()
-    coord := NewCoordinator(&fakePusher{}, &fakeStore{}, &fakeMQ{}, time.Second, 0)
+    coord := NewCoordinator(&fakePusher{}, &fakeStore{}, nil, &fakeMQ{}, time.Second, 0, time.Hour)
     acc := NewAcceptor(coord)
     go func(){
         id := 1
@@ -44,4 +46,22 @@ func TestAcceptorAuthorize(t *testing.T) {
     _ = c.SetReadDeadline(time.Now().Add(time.Second))
     if coord.sessions[chID] == nil { t.Fatal("session not registered") }
     if coord.sessions[chID].Username != "u" { t.Fatal("username mismatch") }
+}
+
+func TestAcceptorAuthorizeNilID(t *testing.T) {
+    s, c := net.Pipe()
+    defer s.Close(); defer c.Close()
+    coord := NewCoordinator(&fakePusher{}, &fakeStore{}, nil, &fakeMQ{}, time.Second, 0, time.Hour)
+    acc := NewAcceptor(coord)
+    go func(){
+        // id=nil
+        req := protocol.Request{ID: nil, Method: "authorize"}
+        p, _ := protocol.Encode(protocol.AuthorizeParams{Username: "u"})
+        req.Params = p
+        raw, _ := protocol.Encode(req)
+        _ = tcp.WriteFrame(c, kupool.OpBinary, raw)
+    }()
+    conn := tcp.NewConn(s)
+    _, err := acc.Accept(conn, time.Second)
+    if err == nil { t.Fatal("expect unauthorized error when id is nil") }
 }
