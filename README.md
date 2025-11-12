@@ -26,7 +26,7 @@
   - `go build ./cmd/kupool-client`
 - 运行（验证过）：
   - 启动服务端（TCP）：
-    - `./kupool-server -addr 127.0.0.1:8080 -interval 3s -store memory -mq memory`
+    - `./bin/kupool-server -addr 127.0.0.1:8080 -interval 3s -store memory -mq memory`
     - 运行日志示例：
       ```
       INFO started listen="127.0.0.1:8080" module=tcp.server
@@ -48,7 +48,7 @@
     - `acceptor.go:22-59` 授权握手（authorize）
     - `coordinator.go:37-51` 广播循环；`rotateJob` 与 `broadcastJob`
     - `listener.go:49-88` 提交校验（去重、限频、过期、结果校验）
-  - `client/app`：示例客户端（接收 `job`，周期提交 `submit`）
+  - `app/client`：示例客户端（接收 `job`，周期提交 `submit`）
   - `tcp` / `websocket`：协议适配与连接管理
     - `tcp/server.go:50-115` TCP 服务端实现
     - `websocket/server.go:47-113` WebSocket 服务端实现
@@ -129,7 +129,7 @@
 
 - 项目结构（目录摘录）：
   - `app/server/`：业务服务端（授权、广播、提交与状态）
-  - `client/app/`：示例客户端逻辑
+  - `app/client/`：示例客户端逻辑
   - `tcp/`、`websocket/`：两种协议实现（服务端/客户端/连接）
   - `protocol/`：请求/响应/参数与编解码
   - `mq/`：消息队列（内存/RabbitMQ）
