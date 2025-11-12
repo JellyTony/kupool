@@ -1,27 +1,27 @@
 package server
 
 import (
-    "crypto/rand"
-    "encoding/hex"
-    "time"
+	"crypto/rand"
+	"encoding/hex"
+	"time"
 
-    "github.com/JellyTony/kupool/logger"
-    "github.com/JellyTony/kupool/protocol"
+	"github.com/JellyTony/kupool/logger"
+	"github.com/JellyTony/kupool/protocol"
 )
 
 func NewCoordinator(p ServerPusher, store StatsStore, state StateStore, mq MessageQueue, interval time.Duration, expire time.Duration, historyWindow time.Duration) *Coordinator {
-    return &Coordinator{
-        sessions:      make(map[string]*Session),
-        srv:           p,
-        store:         store,
-        state:         state,
-        mq:            mq,
-        nonceInterval: interval,
-        historyWindow: historyWindow,
-        history:       make(map[int]JobRecord),
-        expireAfter:   expire,
-        stopCh:        make(chan struct{}),
-    }
+	return &Coordinator{
+		sessions:      make(map[string]*Session),
+		srv:           p,
+		store:         store,
+		state:         state,
+		mq:            mq,
+		nonceInterval: interval,
+		historyWindow: historyWindow,
+		history:       make(map[int]JobRecord),
+		expireAfter:   expire,
+		stopCh:        make(chan struct{}),
+	}
 }
 
 func (c *Coordinator) RegisterSession(channelID, username string) {
@@ -39,33 +39,40 @@ func (c *Coordinator) UnregisterSession(channelID string) {
 func (c *Coordinator) StartBroadcast() { go c.loop() }
 
 func (c *Coordinator) loop() {
-    ticker := time.NewTicker(c.nonceInterval)
-    defer ticker.Stop()
-    // restore latest job/history if possible
-    c.restore()
-    for {
-        c.rotateJob()
-        c.broadcastJob()
-        select {
-        case <-ticker.C:
-            continue
-        case <-c.stopCh:
-            return
-        }
-    }
+	ticker := time.NewTicker(c.nonceInterval)
+	defer ticker.Stop()
+	// restore latest job/history if possible
+	c.restore()
+
+	c.run()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.run()
+			continue
+		case <-c.stopCh:
+			return
+		}
+	}
+}
+
+func (c *Coordinator) run() {
+	c.rotateJob()
+	c.broadcastJob()
 }
 
 func (c *Coordinator) rotateJob() {
-    buf := make([]byte, 16)
-    _, _ = rand.Read(buf)
-    c.mu.Lock()
-    c.jobID++
-    c.serverNonce = hex.EncodeToString(buf)
-    c.history[c.jobID] = JobRecord{Nonce: c.serverNonce, CreatedAt: time.Now()}
-    c.mu.Unlock()
-    if c.state != nil {
-        _ = c.state.SaveJob(c.jobID, c.serverNonce, time.Now())
-    }
+	buf := make([]byte, 16)
+	_, _ = rand.Read(buf)
+	c.mu.Lock()
+	c.jobID++
+	c.serverNonce = hex.EncodeToString(buf)
+	c.history[c.jobID] = JobRecord{Nonce: c.serverNonce, CreatedAt: time.Now()}
+	c.mu.Unlock()
+	if c.state != nil {
+		_ = c.state.SaveJob(c.jobID, c.serverNonce, time.Now())
+	}
 }
 
 type broadcastMsg struct {
@@ -92,25 +99,30 @@ func (c *Coordinator) broadcastJob() {
 		_ = c.srv.Push(s.ChannelID, data)
 	}
 	c.mu.Unlock()
+
 	logger.WithFields(logger.Fields{"module": "app.coordinator", "job_id": jobID, "nonce": nonce, "sessions": len(sessions)}).Info("broadcast job")
 }
 
 func (c *Coordinator) Stop() { close(c.stopCh) }
 
 func (c *Coordinator) restore() {
-    if c.state == nil { return }
-    jobID, nonce, createdAt, err := c.state.LoadLatestJob()
-    if err == nil && jobID > 0 {
-        c.mu.Lock()
-        c.jobID = jobID
-        c.serverNonce = nonce
-        c.history[jobID] = JobRecord{Nonce: nonce, CreatedAt: createdAt}
-        c.mu.Unlock()
-    }
-    hist, err := c.state.LoadJobHistory(c.historyWindow)
-    if err == nil {
-        c.mu.Lock()
-        for id, rec := range hist { c.history[id] = rec }
-        c.mu.Unlock()
-    }
+	if c.state == nil {
+		return
+	}
+	jobID, nonce, createdAt, err := c.state.LoadLatestJob()
+	if err == nil && jobID > 0 {
+		c.mu.Lock()
+		c.jobID = jobID
+		c.serverNonce = nonce
+		c.history[jobID] = JobRecord{Nonce: nonce, CreatedAt: createdAt}
+		c.mu.Unlock()
+	}
+	hist, err := c.state.LoadJobHistory(c.historyWindow)
+	if err == nil {
+		c.mu.Lock()
+		for id, rec := range hist {
+			c.history[id] = rec
+		}
+		c.mu.Unlock()
+	}
 }

@@ -32,6 +32,16 @@ $(BIN_DIR):
 .PHONY: build
 build: build-client build-server
 
+# 本地运行
+.PHONY: run
+run-server:
+	@echo "Running server..."
+	go run $(SERVER_DIR)/main.go
+
+run-client:
+	@echo "Running client..."
+	go run $(CLIENT_DIR)/main.go
+
 # 编译客户端
 .PHONY: build-client
 build-client: $(BIN_DIR)
@@ -126,6 +136,8 @@ deps:
 help:
 	@echo "Available targets:"
 	@echo "  all          - Clean and build for all platforms"
+	@echo "  run-server   - Run server locally"
+	@echo "  run-client   - Run client locally"
 	@echo "  build        - Build client and server for all platforms"
 	@echo "  build-client - Build client for all platforms"
 	@echo "  build-server - Build server for all platforms"
