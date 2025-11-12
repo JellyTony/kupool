@@ -39,6 +39,9 @@ func NewClient(id, name string, opts ClientOptions) kupool.Client {
 	if opts.ReadWait == 0 {
 		opts.ReadWait = kupool.DefaultReadWait
 	}
+	if opts.Heartbeat == 0 {
+		opts.Heartbeat = kupool.DefaultHeartbeat
+	}
 	cli := &Client{
 		id:      id,
 		name:    name,
@@ -156,7 +159,7 @@ func (c *Client) heartbealoop() error {
 }
 
 func (c *Client) ping() error {
-	logger.WithField("module", "tcp.client").Tracef("%s send ping to server", c.id)
+	logger.WithField("module", "tcp.client").Debugf("%s send ping to server", c.id)
 
 	err := c.conn.SetWriteDeadline(time.Now().Add(c.options.WriteWait))
 	if err != nil {

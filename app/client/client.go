@@ -1,9 +1,11 @@
-package app
+package client
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net"
 	"time"
 
@@ -30,22 +32,33 @@ func NewClient(username string) *Client {
 
 func (c *Client) Connect(addr string) error { return c.cli.Connect(addr) }
 
-func (c *Client) Run() error {
+func (c *Client) Run(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	minuteTicker := time.NewTicker(time.Minute)
 	defer minuteTicker.Stop()
 	lastSubmit := time.Time{}
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		frame, err := c.cli.Read()
 		if err != nil {
 			return err
 		}
 		if frame.GetOpCode() != kupool.OpBinary {
+			logger.WithFields(logger.Fields{
+				"module": "client",
+				"body":   frame.GetPayload(),
+			}).Infof("unexpected op code: %d", frame.GetOpCode())
 			continue
 		}
+
 		var msg protocol.Request
-		if err := protocol.Decode(frame.GetPayload(), &msg); err != nil {
+		if err = protocol.Decode(frame.GetPayload(), &msg); err != nil {
 			continue
 		}
 		if msg.Method == "job" {
@@ -55,11 +68,16 @@ func (c *Client) Run() error {
 			c.serverNonce = p.ServerNonce
 			logger.WithFields(logger.Fields{"module": "client", "job_id": p.JobID, "server_nonce": p.ServerNonce}).Info("job received")
 		}
+
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-ticker.C:
 			if c.serverNonce == "" {
+				fmt.Println("server nonce is empty")
 				continue
 			}
+			fmt.Println("xxxxxxxxxxxxx")
 			if !lastSubmit.IsZero() && time.Since(lastSubmit) < time.Second {
 				logger.WithFields(logger.Fields{"module": "client"}).Debug("skip submit due to rate limit")
 				continue
@@ -96,7 +114,7 @@ func (c *Client) Run() error {
 		}
 		if msg.Method == "submit" && msg.ID != nil {
 			var resp protocol.Response
-			if err := protocol.Decode(frame.GetPayload(), &resp); err == nil {
+			if err = protocol.Decode(frame.GetPayload(), &resp); err == nil {
 				if !resp.Result && resp.Error != nil {
 					logger.Warnf("submit failed: %s", *resp.Error)
 				} else {
@@ -107,7 +125,10 @@ func (c *Client) Run() error {
 	}
 }
 
-func (c *Client) Close() { c.cli.Close() }
+func (c *Client) Close() {
+	c.cli.Close()
+	logger.WithFields(logger.Fields{"module": "client"}).Info("close")
+}
 
 type dialer struct{ username string }
 
@@ -116,12 +137,18 @@ func (d *dialer) DialAndHandshake(ctx kupool.DialerContext) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	logger.WithFields(logger.Fields{"module": "client", "address": conn.RemoteAddr().String()}).Info("client connected")
+
 	id := 1
 	req := protocol.Request{ID: &id, Method: "authorize"}
 	p, _ := protocol.Encode(protocol.AuthorizeParams{Username: d.username})
 	req.Params = p
 	data, _ := protocol.Encode(req)
 	_ = tcp.WriteFrame(conn, kupool.OpBinary, data)
+
+	logger.WithFields(logger.Fields{"module": "client", "id": id}).Info("authorize ok")
+
 	return conn, nil
 }
 
