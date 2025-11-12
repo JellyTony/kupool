@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/JellyTony/kupool"
 	"github.com/JellyTony/kupool/logger"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
